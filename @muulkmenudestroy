@@ -1,0 +1,1658 @@
+-- Carrega a Rayfield UI com fallback/segurança
+local success, Rayfield = pcall(function()
+    return loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
+end)
+
+if not success or not Rayfield then
+    warn("Falha ao carregar a Rayfield UI! Tentando link alternativo...")
+    Rayfield = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Rayfield/main/source'))()
+end
+
+-- Cria a Janela Principal com o nome solicitado
+local Window = Rayfield:CreateWindow({
+   Name = "@MUULKMENU - BROOKHAVEN",
+   LoadingTitle = "Carregando Script...",
+   LoadingSubtitle = "por Você",
+   ConfigurationSaving = {
+      Enabled = false,
+      FolderName = nil,
+      FileName = "MenuConfig"
+   },
+   Discord = {
+      Enabled = false,
+      Invite = "noinvite",
+      RememberJoins = true
+   },
+   KeySystem = false
+})
+
+-- Função auxiliar para listar os jogadores
+local function getPlayerList()
+   local list = {}
+   for _, p in ipairs(game.Players:GetPlayers()) do
+      if p ~= game.Players.LocalPlayer then
+         table.insert(list, p.Name)
+      end
+   end
+   if #list == 0 then
+      table.insert(list, "Nenhum player 🇧🇷 | No player 🇺🇸")
+   end
+   return list
+end
+
+----------------------------------------------------
+-- ABA: JOGADOR 🇧🇷 | PLAYER 🇺🇸
+----------------------------------------------------
+local PlayerTab = Window:CreateTab("JOGADOR 🇧🇷 | PLAYER 🇺🇸", 4483362458)
+local LocalPlayerSection = PlayerTab:CreateSection("Controles Livres do Personagem 🇧🇷 | Free Character Controls 🇺🇸")
+
+local flyActive = false
+local flySpeed = 50
+local speedActive = false
+local walkSpeedValue = 16
+local noclipActive = false
+local antiVoidActive = false
+
+local flyGyro, flyVelocity, flyConnection, noclipConnection, antiVoidConnection
+
+-- Fly Livre absoluto guiado pela câmera
+PlayerTab:CreateToggle({
+   Name = "Ativar Voo Livre (Fly) 🇧🇷 | Enable Free Flight (Fly) 🇺🇸",
+   CurrentValue = false,
+   Flag = "FlyToggle",
+   Callback = function(Value)
+      flyActive = Value
+      local player = game.Players.LocalPlayer
+      local character = player.Character or player.CharacterAdded:Wait()
+      local rootPart = character:FindFirstChild("HumanoidRootPart")
+      local humanoid = character:FindFirstChildOfClass("Humanoid")
+
+      if flyActive then
+         if not rootPart or not humanoid then return end
+
+         flyGyro = Instance.new("BodyGyro")
+         flyGyro.P = 9e4
+         flyGyro.maxTorque = Vector3.new(9e9, 9e9, 9e9)
+         flyGyro.cframe = rootPart.CFrame
+         flyGyro.Parent = rootPart
+
+         flyVelocity = Instance.new("BodyVelocity")
+         flyVelocity.velocity = Vector3.new(0, 0, 0)
+         flyVelocity.maxForce = Vector3.new(9e9, 9e9, 9e9)
+         flyVelocity.Parent = rootPart
+
+         humanoid.PlatformStand = true
+
+         local uis = game:GetService("UserInputService")
+         local keysDown = {W = false, S = false, A = false, D = false, Space = false, Shift = false}
+
+         uis.InputBegan:Connect(function(input, gameProcessed)
+            if gameProcessed then return end
+            if input.KeyCode == Enum.KeyCode.W then keysDown.W = true end
+            if input.KeyCode == Enum.KeyCode.S then keysDown.S = true end
+            if input.KeyCode == Enum.KeyCode.A then keysDown.A = true end
+            if input.KeyCode == Enum.KeyCode.D then keysDown.D = true end
+            if input.KeyCode == Enum.KeyCode.Space then keysDown.Space = true end
+            if input.KeyCode == Enum.KeyCode.LeftShift then keysDown.Shift = true end
+         end)
+
+         uis.InputEnded:Connect(function(input)
+            if input.KeyCode == Enum.KeyCode.W then keysDown.W = false end
+            if input.KeyCode == Enum.KeyCode.S then keysDown.S = false end
+            if input.KeyCode == Enum.KeyCode.A then keysDown.A = false end
+            if input.KeyCode == Enum.KeyCode.D then keysDown.D = false end
+            if input.KeyCode == Enum.KeyCode.Space then keysDown.Space = false end
+            if input.KeyCode == Enum.KeyCode.LeftShift then keysDown.Shift = false end
+         end)
+
+         flyConnection = game:GetService("RunService").RenderStepped:Connect(function()
+            if not flyActive or not character or not rootPart or not humanoid then return end
+            local camera = workspace.CurrentCamera
+            local moveDirection = Vector3.new(0, 0, 0)
+
+            if keysDown.W then moveDirection = moveDirection + camera.CFrame.LookVector end
+            if keysDown.S then moveDirection = moveDirection - camera.CFrame.LookVector end
+            if keysDown.D then moveDirection = moveDirection + camera.CFrame.RightVector end
+            if keysDown.A then moveDirection = moveDirection - camera.CFrame.RightVector end
+            if keysDown.Space then moveDirection = moveDirection + Vector3.new(0, 1, 0) end
+            if keysDown.Shift then moveDirection = moveDirection - Vector3.new(0, 1, 0) end
+
+            if moveDirection.Magnitude > 0 then
+               flyVelocity.velocity = moveDirection.Unit * flySpeed
+            else
+               flyVelocity.velocity = Vector3.new(0, 0, 0)
+            end
+
+            flyGyro.cframe = camera.CFrame
+         end)
+      else
+         if flyConnection then flyConnection:Disconnect() end
+         if flyGyro then flyGyro:Destroy() end
+         if flyVelocity then flyVelocity:Destroy() end
+         if humanoid then humanoid.PlatformStand = false end
+      end
+   end,
+})
+
+PlayerTab:CreateSlider({
+   Name = "Velocidade do Voo Livre 🇧🇷 | Free Flight Speed 🇺🇸",
+   Range = {10, 300},
+   Increment = 5,
+   Suffix = " Speed",
+   CurrentValue = 50,
+   Flag = "FlySpeedSlider",
+   Callback = function(Value)
+      flySpeed = Value
+   end,
+})
+
+-- Função NoClip (Atravessar Paredes)
+PlayerTab:CreateToggle({
+   Name = "Ativar NoClip (Atravessar Paredes) 🇧🇷 | Enable NoClip (Walk Through Walls) 🇺🇸",
+   CurrentValue = false,
+   Flag = "NoclipToggle",
+   Callback = function(Value)
+      noclipActive = Value
+
+      if noclipActive then
+         Rayfield:Notify({ Title = "NoClip Ativado 🇧🇷 | NoClip Enabled 🇺🇸", Content = "Agora você pode atravessar paredes! 🇧🇷 | You can now walk through walls! 🇺🇸", Duration = 2.5, Image = 4483362458 })
+         noclipConnection = game:GetService("RunService").Stepped:Connect(function()
+            local player = game.Players.LocalPlayer
+            if player.Character then
+               for _, part in ipairs(player.Character:GetDescendants()) do
+                  if part:IsA("BasePart") then
+                     part.CanCollide = false
+                  end
+               end
+            end
+         end)
+      else
+         if noclipConnection then noclipConnection:Disconnect() end
+         local player = game.Players.LocalPlayer
+         if player.Character then
+            for _, part in ipairs(player.Character:GetDescendants()) do
+               if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+                  part.CanCollide = true
+               end
+            end
+         end
+         Rayfield:Notify({ Title = "NoClip Desativado 🇧🇷 | NoClip Disabled 🇺🇸", Content = "Colisão do personagem restaurada. 🇧🇷 | Character collision restored. 🇺🇸", Duration = 2.5, Image = 4483362458 })
+      end
+   end,
+})
+
+-- Função ANTI-VOID (Voltar ao Spawn ao cair no vazio)
+PlayerTab:CreateToggle({
+   Name = "Ativar Anti-Void (Voltar ao Lobby ao Cair) 🇧🇷 | Enable Anti-Void (Return to Lobby on Fall) 🇺🇸",
+   CurrentValue = false,
+   Flag = "AntiVoidToggle",
+   Callback = function(Value)
+      antiVoidActive = Value
+
+      if antiVoidActive then
+         Rayfield:Notify({ Title = "Anti-Void Ativado 🇧🇷 | Anti-Void Enabled 🇺🇸", Content = "Você será salvo se cair no vazio! 🇧🇷 | You will be saved if you fall into the void! 🇺🇸", Duration = 2.5, Image = 4483362458 })
+         
+         antiVoidConnection = game:GetService("RunService").Heartbeat:Connect(function()
+            if not antiVoidActive then return end
+            local player = game.Players.LocalPlayer
+            local character = player.Character
+            if character and character:FindFirstChild("HumanoidRootPart") then
+               local root = character.HumanoidRootPart
+               if root.Position.Y < -50 then
+                  local spawnCFrame = nil
+                  local spawns = workspace:GetDescendants()
+                  for _, obj in ipairs(spawns) do
+                     if obj:IsA("SpawnLocation") then
+                        spawnCFrame = obj.CFrame + Vector3.new(0, 5, 0)
+                        break
+                     end
+                  end
+                  
+                  if not spawnCFrame then
+                     spawnCFrame = CFrame.new(0, 10, 0)
+                  end
+
+                  root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                  root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                  root.CFrame = spawnCFrame
+
+                  Rayfield:Notify({ Title = "Salvo pelo Anti-Void! 🇧🇷 | Saved by Anti-Void! 🇺🇸", Content = "Você foi teletransportado de volta para o Lobby. 🇧🇷 | You were teleported back to the Lobby. 🇺🇸", Duration = 3, Image = 4483362458 })
+               end
+            end
+         end)
+      else
+         if antiVoidConnection then antiVoidConnection:Disconnect() end
+         Rayfield:Notify({ Title = "Anti-Void Desativado 🇧🇷 | Anti-Void Disabled 🇺🇸", Content = "Proteção contra quedas desligada. 🇧🇷 | Fall protection turned off. 🇺🇸", Duration = 2.5, Image = 4483362458 })
+      end
+   end,
+})
+
+PlayerTab:CreateToggle({
+   Name = "Ativar Super Velocidade (Speed) 🇧🇷 | Enable Super Speed (Speed) 🇺🇸",
+   CurrentValue = false,
+   Flag = "SpeedToggle",
+   Callback = function(Value)
+      speedActive = Value
+      local player = game.Players.LocalPlayer
+      
+      task.spawn(function()
+         while speedActive do
+            task.wait(0.1)
+            if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+               player.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = walkSpeedValue
+            end
+         end
+         if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+            player.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = 16
+         end
+      end)
+   end,
+})
+
+PlayerTab:CreateSlider({
+   Name = "Velocidade de Corrida 🇧🇷 | Walk Speed 🇺🇸",
+   Range = {16, 500},
+   Increment = 2,
+   Suffix = " WalkSpeed",
+   CurrentValue = 16,
+   Flag = "WalkSpeedSlider",
+   Callback = function(Value)
+      walkSpeedValue = Value
+      if speedActive then
+         local player = game.Players.LocalPlayer
+         if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+            player.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = walkSpeedValue
+         end
+      end
+   end,
+})
+
+PlayerTab:CreateButton({
+   Name = "RESETAR TUDO (Movimento e Funções) 🇧🇷 | RESET ALL (Movement and Functions) 🇺🇸",
+   Callback = function()
+      flyActive = false
+      speedActive = false
+      noclipActive = false
+      antiVoidActive = false
+      if flyConnection then flyConnection:Disconnect() end
+      if noclipConnection then noclipConnection:Disconnect() end
+      if antiVoidConnection then antiVoidConnection:Disconnect() end
+
+      local player = game.Players.LocalPlayer
+      local character = player.Character
+      if character then
+         local humanoid = character:FindFirstChildOfClass("Humanoid")
+         local rootPart = character:FindFirstChild("HumanoidRootPart")
+
+         if humanoid then
+            humanoid.PlatformStand = false
+            humanoid.WalkSpeed = 16
+         end
+
+         if rootPart then
+            for _, child in ipairs(rootPart:GetChildren()) do
+               if child:IsA("BodyGyro") or child:IsA("BodyVelocity") then
+                  child:Destroy()
+               end
+            end
+         end
+         
+         for _, part in ipairs(character:GetDescendants()) do
+            if part:IsA("BasePart") then
+               part.CanCollide = true
+            end
+         end
+      end
+
+      Rayfield:Notify({ Title = "Resetado! 🇧🇷 | Reset! 🇺🇸", Content = "Todas as funções foram resetadas com sucesso. 🇧🇷 | All functions were successfully reset. 🇺🇸", Duration = 3, Image = 4483362458 })
+   end,
+})
+
+----------------------------------------------------
+-- SEÇÃO: SEGURAR PLAYER NA MÃO 🇧🇷 | HOLD PLAYER IN HAND 🇺🇸
+----------------------------------------------------
+local HoldPlayerSection = PlayerTab:CreateSection("SEGURAR PLAYER NA MÃO 🇧🇷 | HOLD PLAYER IN HAND 🇺🇸")
+
+local selectedHoldPlayerName = nil
+
+local HoldPlayerDropdown = PlayerTab:CreateDropdown({
+   Name = "Selecionar Player para Segurar 🇧🇷 | Select Player to Hold 🇺🇸",
+   Options = getPlayerList(),
+   CurrentOption = "",
+   Flag = "SelectedHoldPlayerDropdown",
+   Callback = function(Option)
+      if type(Option) == "table" then
+         selectedHoldPlayerName = Option[1]
+      else
+         selectedHoldPlayerName = Option
+      end
+   end,
+})
+
+PlayerTab:CreateButton({
+   Name = "Atualizar Lista (Segurar Player) 🇧🇷 | Refresh List (Hold Player) 🇺🇸",
+   Callback = function()
+      HoldPlayerDropdown:Refresh(getPlayerList())
+      Rayfield:Notify({ Title = "Atualizado 🇧🇷 | Updated 🇺🇸", Content = "Lista de jogadores atualizada! 🇧🇷 | Player list updated! 🇺🇸", Duration = 2, Image = 4483362458 })
+   end,
+})
+
+local holdPlayerActive = false
+local holdConnection = nil
+
+PlayerTab:CreateToggle({
+   Name = "SEGURAR PLAYER NA MÃO (Ativar/Desativar) 🇧🇷 | HOLD PLAYER IN HAND (Enable/Disable) 🇺🇸",
+   CurrentValue = false,
+   Flag = "HoldPlayerToggle",
+   Callback = function(Value)
+      holdPlayerActive = Value
+
+      if holdPlayerActive then
+         if not selectedHoldPlayerName or selectedHoldPlayerName == "Nenhum player 🇧🇷 | No player 🇺🇸" then
+            Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Selecione um player na lista primeiro! 🇧🇷 | Select a player from the list first! 🇺🇸", Duration = 3, Image = 4483362458 })
+            holdPlayerActive = false
+            return
+         end
+
+         local targetPlayer = game.Players:FindFirstChild(selectedHoldPlayerName)
+         if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            Rayfield:Notify({ Title = "Erro 🇧🇷 | Error 🇺🇸", Content = "O player selecionado não foi encontrado ou está morto. 🇧🇷 | Selected player not found or dead. 🇺🇸", Duration = 3, Image = 4483362458 })
+            holdPlayerActive = false
+            return
+         end
+
+         Rayfield:Notify({ Title = "Segurando Player 🇧🇷 | Holding Player 🇺🇸", Content = "Você pegou " .. selectedHoldPlayerName .. " na mão! 🇧🇷 | You picked up " .. selectedHoldPlayerName .. " in your hand! 🇺🇸", Duration = 2.5, Image = 4483362458 })
+
+         local runService = game:GetService("RunService")
+         holdConnection = runService.RenderStepped:Connect(function()
+            if not holdPlayerActive then
+               if holdConnection then holdConnection:Disconnect() end
+               return
+            end
+
+            local player = game.Players.LocalPlayer
+            local character = player.Character
+            local currentTarget = game.Players:FindFirstChild(selectedHoldPlayerName)
+
+            if character and character:FindFirstChild("Right Arm") or character:FindFirstChild("RightHand") then
+               local rightArm = character:FindFirstChild("RightArm") or character:FindFirstChild("RightHand")
+               
+               if currentTarget and currentTarget.Character and currentTarget.Character:FindFirstChild("HumanoidRootPart") then
+                  local targetRoot = currentTarget.Character.HumanoidRootPart
+                  local targetHumanoid = currentTarget.Character:FindFirstChildOfClass("Humanoid")
+                  
+                  if targetHumanoid then
+                     targetHumanoid.PlatformStand = true
+                  end
+
+                  targetRoot.CFrame = rightArm.CFrame * CFrame.new(0, -1.2, 0) * CFrame.Angles(math.rad(90), 0, 0)
+                  targetRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                  targetRoot.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+               end
+            end
+         end)
+      else
+         if holdConnection then holdConnection:Disconnect() end
+         
+         local targetPlayer = game.Players:FindFirstChild(selectedHoldPlayerName)
+         if targetPlayer and targetPlayer.Character then
+            local targetHumanoid = targetPlayer.Character:FindFirstChildOfClass("Humanoid")
+            if targetHumanoid then
+               targetHumanoid.PlatformStand = false
+            end
+         end
+
+         Rayfield:Notify({ Title = "Solto 🇧🇷 | Released 🇺🇸", Content = "Você soltou o jogador. 🇧🇷 | You released the player. 🇺🇸", Duration = 2, Image = 4483362458 })
+      end
+   end,
+})
+
+----------------------------------------------------
+-- SEÇÃO: AÇÕES DIRETAS COM JOGADOR 🇧🇷 | DIRECT PLAYER ACTIONS 🇺🇸
+----------------------------------------------------
+local PlayerTargetSection = PlayerTab:CreateSection("Ações Diretas com Jogador 🇧🇷 | Direct Player Actions 🇺🇸")
+
+local selectedPlayerHeadName = nil
+
+local PlayerTargetDropdown = PlayerTab:CreateDropdown({
+   Name = "Selecionar Jogador Alvo 🇧🇷 | Select Target Player 🇺🇸",
+   Options = getPlayerList(),
+   CurrentOption = "",
+   Flag = "SelectedPlayerHeadDropdown",
+   Callback = function(Option)
+      if type(Option) == "table" then
+         selectedPlayerHeadName = Option[1]
+      else
+         selectedPlayerHeadName = Option
+      end
+   end,
+})
+
+PlayerTab:CreateButton({
+   Name = "Atualizar Lista (Jogadores) 🇧🇷 | Refresh List (Players) 🇺🇸",
+   Callback = function()
+      PlayerTargetDropdown:Refresh(getPlayerList())
+      Rayfield:Notify({ Title = "Atualizado 🇧🇷 | Updated 🇺🇸", Content = "Lista de jogadores atualizada! 🇧🇷 | Player list updated! 🇺🇸", Duration = 2, Image = 4483362458 })
+   end,
+})
+
+PlayerTab:CreateButton({
+   Name = "TELETRANSPORTAR PARA O JOGADOR 🇧🇷 | TELEPORT TO PLAYER 🇺🇸",
+   Callback = function()
+      if not selectedPlayerHeadName or selectedPlayerHeadName == "Nenhum player 🇧🇷 | No player 🇺🇸" then
+         Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Selecione um player na lista primeiro! 🇧🇷 | Select a player from the list first! 🇺🇸", Duration = 3, Image = 4483362458 })
+         return
+      end
+
+      local targetPlayer = game.Players:FindFirstChild(selectedPlayerHeadName)
+      local player = game.Players.LocalPlayer
+      if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+         if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            player.Character.HumanoidRootPart.CFrame = targetPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, 3, 0)
+            Rayfield:Notify({ Title = "Teletransportado! 🇧🇷 | Teleported! 🇺🇸", Content = "Você foi até " .. selectedPlayerHeadName, Duration = 2.5, Image = 4483362458 })
+         end
+      else
+         Rayfield:Notify({ Title = "Erro 🇧🇷 | Error 🇺🇸", Content = "O jogador alvo não foi encontrado ou está morto. 🇧🇷 | Target player not found or dead. 🇺🇸", Duration = 3, Image = 4483362458 })
+      end
+   end,
+})
+
+local sitHeadActive = false
+
+PlayerTab:CreateToggle({
+   Name = "SENTAR NA CABEÇA (Ativar/Desativar) 🇧🇷 | SIT ON HEAD (Enable/Disable) 🇺🇸",
+   CurrentValue = false,
+   Flag = "SitHeadToggle",
+   Callback = function(Value)
+      sitHeadActive = Value
+
+      if sitHeadActive then
+         if not selectedPlayerHeadName or selectedPlayerHeadName == "Nenhum player 🇧🇷 | No player 🇺🇸" then
+            Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Selecione um player na lista primeiro! 🇧🇷 | Select a player from the list first! 🇺🇸", Duration = 3, Image = 4483362458 })
+            sitHeadActive = false
+            return
+         end
+
+         Rayfield:Notify({ Title = "Ativado 🇧🇷 | Enabled 🇺🇸", Content = "Fixado e sentado acima da cabeça de " .. selectedPlayerHeadName, Duration = 2.5, Image = 4483362458 })
+
+         task.spawn(function()
+            local player = game.Players.LocalPlayer
+            while sitHeadActive do
+               task.wait()
+               local targetPlayer = game.Players:FindFirstChild(selectedPlayerHeadName)
+               if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("Head") then
+                  if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                     local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                     if humanoid then
+                        humanoid.Sit = true
+                     end
+                     player.Character.HumanoidRootPart.CFrame = targetPlayer.Character.Head.CFrame + Vector3.new(0, 3.5, 0)
+                  end
+               end
+            end
+         end)
+      else
+         local player = game.Players.LocalPlayer
+         if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+            player.Character:FindFirstChildOfClass("Humanoid").Sit = false
+         end
+         Rayfield:Notify({ Title = "Desativado 🇧🇷 | Disabled 🇺🇸", Content = "Você se desfixou da cabeça do jogador. 🇧🇷 | You unattached from the player's head. 🇺🇸", Duration = 2, Image = 4483362458 })
+      end
+   end,
+})
+
+local vaiVemActive = false
+
+PlayerTab:CreateToggle({
+   Name = "GESTO VAI E VEM NO JOGADOR 🇧🇷 | BACK AND FORTH GESTURE ON PLAYER 🇺🇸",
+   CurrentValue = false,
+   Flag = "VaiVemToggle",
+   Callback = function(Value)
+      vaiVemActive = Value
+
+      if vaiVemActive then
+         if not selectedPlayerHeadName or selectedPlayerHeadName == "Nenhum player 🇧🇷 | No player 🇺🇸" then
+            Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Selecione um player na lista primeiro! 🇧🇷 | Select a player from the list first! 🇺🇸", Duration = 3, Image = 4483362458 })
+            vaiVemActive = false
+            return
+         end
+
+         Rayfield:Notify({ Title = "Vai e Vem Ativado 🇧🇷 | Back and Forth Enabled 🇺🇸", Content = "Movimentando em cima do jogador... 🇧🇷 | Moving on top of the player... 🇺🇸", Duration = 2, Image = 4483362458 })
+
+         task.spawn(function()
+            local runService = game:GetService("RunService")
+            local player = game.Players.LocalPlayer
+            local startTime = tick()
+
+            while vaiVemActive do
+               task.wait()
+               local targetPlayer = game.Players:FindFirstChild(selectedPlayerHeadName)
+               if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                  if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                     local targetRoot = targetPlayer.Character.HumanoidRootPart
+                     local t = (tick() - startTime) * 8
+                     local offsetZ = math.sin(t) * 4
+                     player.Character.HumanoidRootPart.CFrame = targetRoot.CFrame * CFrame.new(0, 3, offsetZ)
+                  end
+               end
+            end
+         end)
+      else
+         Rayfield:Notify({ Title = "Desativado 🇧🇷 | Disabled 🇺🇸", Content = "Gesto vai e vem parado. 🇧🇷 | Back and forth stopped. 🇺🇸", Duration = 2, Image = 4483362458 })
+      end
+   end,
+})
+
+local OthersSection = PlayerTab:CreateSection("OUTROS JOGADORES 🇧🇷 | OTHER PLAYERS 🇺🇸")
+
+local espRgbActive = false
+local espFolder = Instance.new("Folder")
+espFolder.Name = "ESP_RGB_Folder"
+espFolder.Parent = workspace
+
+PlayerTab:CreateToggle({
+   Name = "Nomes Flutuantes RGB (ESP Nick) 🇧🇷 | RGB Floating Names (ESP Nick) 🇺🇸",
+   CurrentValue = false,
+   Flag = "EspRgbToggle",
+   Callback = function(Value)
+      espRgbActive = Value
+
+      if not espRgbActive then
+         espFolder:ClearAllChildren()
+         return
+      end
+
+      task.spawn(function()
+         while espRgbActive do
+            local hue = (tick() % 3) / 3
+            local rgbColor = Color3.fromHSV(hue, 1, 1)
+
+            for _, p in ipairs(game.Players:GetPlayers()) do
+               if p ~= game.Players.LocalPlayer and p.Character and p.Character:FindFirstChild("Head") then
+                  local head = p.Character.Head
+                  local billboard = espFolder:FindFirstChild("ESP_" .. p.Name)
+
+                  if not billboard then
+                     billboard = Instance.new("BillboardGui")
+                     billboard.Name = "ESP_" .. p.Name
+                     billboard.AlwaysOnTop = true
+                     billboard.Size = UDim2.new(0, 200, 0, 50)
+                     billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+                     billboard.Parent = espFolder
+
+                     local nameLabel = Instance.new("TextLabel")
+                     nameLabel.Name = "NameLabel"
+                     nameLabel.Size = UDim2.new(1, 0, 1, 0)
+                     nameLabel.BackgroundTransparency = 1
+                     nameLabel.Text = p.Name
+                     nameLabel.Font = Enum.Font.SourceSansBold
+                     nameLabel.TextSize = 20
+                     nameLabel.TextStrokeTransparency = 0.2
+                     nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+                     nameLabel.Parent = billboard
+                  end
+
+                  billboard.Adornee = head
+                  if billboard:FindFirstChild("NameLabel") then
+                     billboard.NameLabel.TextColor3 = rgbColor
+                  end
+               end
+            end
+
+            for _, child in ipairs(espFolder:GetChildren()) do
+               local playerName = child.Name:gsub("ESP_", "")
+               local p = game.Players:FindFirstChild(playerName)
+               if not p or not p.Character or not p.Character:FindFirstChild("Head") then
+                  child:Destroy()
+               end
+            end
+
+            task.wait(0.03)
+         end
+
+         espFolder:ClearAllChildren()
+      end)
+   end,
+})
+
+----------------------------------------------------
+-- ABA: VISUAL
+----------------------------------------------------
+local VisualTab = Window:CreateTab("VISUAL 🇧🇷 | VISUAL 🇺🇸", 4483362458)
+local VisualSection = VisualTab:CreateSection("Aura de Itens do Backpack 🇧🇷 | Backpack Items Aura 🇺🇸")
+
+local circleHackActive = false
+local orbitDistance = 6
+local maxItemsCount = 3
+local itemMultiplier = 2
+
+local circleFolder = workspace:FindFirstChild("CircleHack_Folder") or Instance.new("Folder")
+circleFolder.Name = "CircleHack_Folder"
+circleFolder.Parent = workspace
+
+VisualTab:CreateToggle({
+   Name = "CIRCULO HACK 🇧🇷 | CIRCLE HACK 🇺🇸",
+   CurrentValue = false,
+   Flag = "CircleHackToggle",
+   Callback = function(Value)
+      circleHackActive = Value
+
+      if not circleHackActive then
+         circleFolder:ClearAllChildren()
+         return
+      end
+
+      task.spawn(function()
+         local runService = game:GetService("RunService")
+         local player = game.Players.LocalPlayer
+         local character = player.Character or player.CharacterAdded:Wait()
+         
+         if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+
+         circleFolder:ClearAllChildren()
+
+         local backpackItems = {}
+         if player:FindFirstChild("Backpack") then
+            for _, item in ipairs(player.Backpack:GetChildren()) do
+               if item:IsA("Tool") then
+                  table.insert(backpackItems, item)
+               end
+            end
+         end
+         
+         for _, item in ipairs(character:GetChildren()) do
+            if item:IsA("Tool") then
+               table.insert(backpackItems, item)
+            end
+         end
+
+         if #backpackItems == 0 then
+            Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Nenhum item/tool encontrado no seu inventário! 🇧🇷 | No item/tool found in your inventory! 🇺🇸", Duration = 3, Image = 4483362458 })
+            circleHackActive = false
+            return
+         end
+
+         local spawnedModels = {}
+         local limit = math.min(maxItemsCount, #backpackItems)
+
+         for i = 1, limit do
+            local itemTemplate = backpackItems[i]
+            for m = 1, itemMultiplier do
+               local clonedItem = itemTemplate:Clone()
+               
+               for _, desc in ipairs(clonedItem:GetDescendants()) do
+                  if desc:IsA("LuaSourceContainer") or desc:IsA("Sound") or desc:IsA("TouchTransmitter") then
+                     desc:Destroy()
+                  elseif desc:IsA("BasePart") then
+                     desc.CanCollide = false
+                     desc.Anchored = true
+                  end
+               end
+               
+               clonedItem.Parent = circleFolder
+               table.insert(spawnedModels, clonedItem)
+            end
+         end
+
+         local startTime = tick()
+         local renderConnection
+
+         renderConnection = runService.RenderStepped:Connect(function()
+            if not circleHackActive or not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then
+               if renderConnection then renderConnection:Disconnect() end
+               circleFolder:ClearAllChildren()
+               return
+            end
+
+            local t = (tick() - startTime) * 0.5
+            local currentRoot = player.Character.HumanoidRootPart
+            local total = #spawnedModels
+
+            for i, model in ipairs(spawnedModels) do
+               if model and model.Parent then
+                  local angle = t + ((i / total) * (math.pi * 2))
+                  local posX = math.cos(angle) * orbitDistance
+                  local posZ = math.sin(angle) * orbitDistance
+                  local posY = math.sin(t * 0.8 + i) * 1.2
+                  
+                  local targetPos = currentRoot.Position + Vector3.new(posX, posY, posZ)
+                  
+                  local rx = math.rad(t * 30 + (i * 20))
+                  local ry = math.rad(t * 40 + (i * 35))
+                  local rz = math.rad(t * 25 + (i * 15))
+
+                  local newCFrame = CFrame.new(targetPos) * CFrame.Angles(rx, ry, rz)
+
+                  if model:IsA("Model") then
+                     if model.PrimaryPart then
+                        model:SetPrimaryPartCFrame(newCFrame)
+                     else
+                        local p = model:FindFirstChildWhichIsA("BasePart")
+                        if p then
+                           model.PrimaryPart = p
+                           model:SetPrimaryPartCFrame(newCFrame)
+                        end
+                     end
+                  elseif model:IsA("Tool") then
+                     local handle = model:FindFirstChild("Handle") or model:FindFirstChildWhichIsA("BasePart")
+                     if handle then
+                        handle.CFrame = newCFrame
+                     end
+                  end
+               end
+            end
+         end)
+      end)
+   end,
+})
+
+VisualTab:CreateSlider({
+   Name = "Distância do Círculo Hack 🇧🇷 | Circle Hack Distance 🇺🇸",
+   Range = {3, 25},
+   Increment = 1,
+   Suffix = " Studs",
+   CurrentValue = 6,
+   Flag = "OrbitDistanceSlider",
+   Callback = function(Value)
+      orbitDistance = Value
+   end,
+})
+
+VisualTab:CreateSlider({
+   Name = "Quantidade do Círculo Hack 🇧🇷 | Circle Hack Quantity 🇺🇸",
+   Range = {1, 10},
+   Increment = 1,
+   Suffix = " Itens",
+   CurrentValue = 3,
+   Flag = "ItemsCountSlider",
+   Callback = function(Value)
+      maxItemsCount = Value
+   end,
+})
+
+VisualTab:CreateSlider({
+   Name = "Multiplicador do Círculo Hack 🇧🇷 | Circle Hack Multiplier 🇺🇸",
+   Range = {1, 5},
+   Increment = 1,
+   Suffix = "x Cópia",
+   CurrentValue = 2,
+   Flag = "ItemMultiplierSlider",
+   Callback = function(Value)
+      itemMultiplier = Value
+   end,
+})
+
+----------------------------------------------------
+-- ABA: CAMERA
+----------------------------------------------------
+local CameraTab = Window:CreateTab("CAMERA 🇧🇷 | CAMERA 🇺🇸", 4483362458)
+local CameraSection = CameraTab:CreateSection("Modo Espectador 🇧🇷 | Spectator Mode 🇺🇸")
+
+local selectedCameraPlayerName = nil
+
+local CameraPlayerDropdown = CameraTab:CreateDropdown({
+   Name = "Selecionar Player para Observar 🇧🇷 | Select Player to Watch 🇺🇸",
+   Options = getPlayerList(),
+   CurrentOption = "",
+   Flag = "SelectedCameraPlayerDropdown",
+   Callback = function(Option)
+      if type(Option) == "table" then
+         selectedCameraPlayerName = Option[1]
+      else
+         selectedCameraPlayerName = Option
+      end
+   end,
+})
+
+CameraTab:CreateButton({
+   Name = "Atualizar Lista (Câmera) 🇧🇷 | Refresh List (Camera) 🇺🇸",
+   Callback = function()
+      CameraPlayerDropdown:Refresh(getPlayerList())
+      Rayfield:Notify({ Title = "Atualizado 🇧🇷 | Updated 🇺🇸", Content = "Lista de jogadores da câmera atualizada! 🇧🇷 | Camera player list updated! 🇺🇸", Duration = 2, Image = 4483362458 })
+   end,
+})
+
+local spectatingActive = false
+
+CameraTab:CreateToggle({
+   Name = "OBSERVAR JOGADOR 🇧🇷 | SPECTATE PLAYER 🇺🇸",
+   CurrentValue = false,
+   Flag = "SpectateToggle",
+   Callback = function(Value)
+      spectatingActive = Value
+      local camera = workspace.CurrentCamera
+      local player = game.Players.LocalPlayer
+
+      if spectatingActive then
+         if not selectedCameraPlayerName or selectedCameraPlayerName == "Nenhum player 🇧🇷 | No player 🇺🇸" then
+            Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Selecione um player na lista primeiro! 🇧🇷 | Select a player from the list first! 🇺🇸", Duration = 3, Image = 4483362458 })
+            return
+         end
+
+         local targetPlayer = game.Players:FindFirstChild(selectedCameraPlayerName)
+         if not targetPlayer or not targetPlayer.Character then
+            Rayfield:Notify({ Title = "Erro 🇧🇷 | Error 🇺🇸", Content = "O player selecionado não foi encontrado ou está morto. 🇧🇷 | Selected player not found or dead. 🇺🇸", Duration = 3, Image = 4483362458 })
+            return
+         end
+
+         Rayfield:Notify({ Title = "Modo Espectador 🇧🇷 | Spectator Mode 🇺🇸", Content = "Observando jogador: " .. selectedCameraPlayerName, Duration = 2, Image = 4483362458 })
+
+         task.spawn(function()
+            while spectatingActive do
+               task.wait()
+               if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                  camera.CameraType = Enum.CameraType.Custom
+                  camera.CameraSubject = targetPlayer.Character:FindFirstChildOfClass("Humanoid") or targetPlayer.Character.HumanoidRootPart
+               else
+                  break
+               end
+            end
+         end)
+      else
+         if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+            camera.CameraType = Enum.CameraType.Custom
+            camera.CameraSubject = player.Character:FindFirstChildOfClass("Humanoid")
+         end
+         Rayfield:Notify({ Title = "Câmera Normal 🇧🇷 | Normal Camera 🇺🇸", Content = "Você voltou para o seu personagem. 🇧🇷 | You returned to your character. 🇺🇸", Duration = 2, Image = 4483362458 })
+      end
+   end,
+})
+
+CameraTab:CreateButton({
+   Name = "RESETAR CÂMERA 🇧🇷 | RESET CAMERA 🇺🇸",
+   Callback = function()
+      spectatingActive = false
+      local camera = workspace.CurrentCamera
+      local player = game.Players.LocalPlayer
+
+      if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+         camera.CameraType = Enum.CameraType.Custom
+         camera.CameraSubject = player.Character:FindFirstChildOfClass("Humanoid")
+      elseif player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+         camera.CameraType = Enum.CameraType.Custom
+         camera.CameraSubject = player.Character.HumanoidRootPart
+      end
+
+      Rayfield:Notify({
+         Title = "Câmera Resetada 🇧🇷 | Camera Reset 🇺🇸",
+         Content = "A câmera foi forçada de volta ao seu personagem! 🇧🇷 | Camera forced back to your character! 🇺🇸",
+         Duration = 3,
+         Image = 4483362458,
+      })
+   end,
+})
+
+----------------------------------------------------
+-- ABA: TROLAGEM 🇧🇷 | TROLLING 🇺🇸
+----------------------------------------------------
+local TrollTab = Window:CreateTab("TROLAGEM 🇧🇷 | TROLLING 🇺🇸", 4483362458)
+local TrollSection = TrollTab:CreateSection("Painel de Trollagem 🇧🇷 | Trolling Panel 🇺🇸")
+
+local selectedPlayerName = nil
+
+local PlayerDropdown = TrollTab:CreateDropdown({
+   Name = "Selecionar Player Geral 🇧🇷 | Select General Player 🇺🇸",
+   Options = getPlayerList(),
+   CurrentOption = "",
+   Flag = "SelectedPlayerDropdown",
+   Callback = function(Option)
+      if type(Option) == "table" then
+         selectedPlayerName = Option[1]
+      else
+         selectedPlayerName = Option
+      end
+   end,
+})
+
+TrollTab:CreateButton({
+   Name = "Atualizar Lista de Players 🇧🇷 | Refresh Players List 🇺🇸",
+   Callback = function()
+      PlayerDropdown:Refresh(getPlayerList())
+      Rayfield:Notify({ Title = "Atualizado 🇧🇷 | Updated 🇺🇸", Content = "Lista de jogadores atualizada! 🇧🇷 | Player list updated! 🇺🇸", Duration = 2, Image = 4483362458 })
+   end,
+})
+
+TrollTab:CreateButton({
+   Name = "sofá morte 🇧🇷 | couch death 🇺🇸",
+   Callback = function()
+      local player = game.Players.LocalPlayer
+      local character = player.Character
+      if not character or not character:FindFirstChild("HumanoidRootPart") then
+         Rayfield:Notify({ Title = "Erro 🇧🇷 | Error 🇺🇸", Content = "Seu personagem não foi encontrado! 🇧🇷 | Your character was not found! 🇺🇸", Duration = 3, Image = 4483362458 })
+         return
+      end
+
+      if not selectedPlayerName or selectedPlayerName == "Nenhum player 🇧🇷 | No player 🇺🇸" then
+         Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Selecione um player válido na lista primeiro! 🇧🇷 | Select a valid player from the list first! 🇺🇸", Duration = 3, Image = 4483362458 })
+         return
+      end
+
+      local targetPlayer = game.Players:FindFirstChild(selectedPlayerName)
+      if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+         Rayfield:Notify({ Title = "Erro 🇧🇷 | Error 🇺🇸", Content = "O player selecionado não está no jogo ou morreu. 🇧🇷 | Selected player is not in game or died. 🇺🇸", Duration = 3, Image = 4483362458 })
+         return
+      end
+
+      local originalCFrame = character.HumanoidRootPart.CFrame
+
+      local backpack = player:FindFirstChild("Backpack")
+      local couchTool = nil
+      if backpack then couchTool = backpack:FindFirstChild("Couch") end
+      if not couchTool then couchTool = character:FindFirstChild("Couch") end
+
+      if couchTool and couchTool:IsA("Tool") then
+         couchTool.Parent = character
+      else
+         Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Item 'Couch' não encontrado na Backpack! 🇧🇷 | Item 'Couch' not found in Backpack! 🇺🇸", Duration = 3, Image = 4483362458 })
+      end
+
+      task.wait(0.1)
+
+      local rootPart = character.HumanoidRootPart
+      local runService = game:GetService("RunService")
+      local startTime = tick()
+      
+      local connection
+      connection = runService.RenderStepped:Connect(function()
+         if tick() - startTime >= 3 then
+            if connection then connection:Disconnect() end
+            return
+         end
+
+         if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            local targetRoot = targetPlayer.Character.HumanoidRootPart
+            local offsetX = (math.random() - 0.5) * 8
+            local offsetY = (math.random() - 0.5) * 6
+            local offsetZ = (math.random() - 0.5) * 8
+            
+            local randomAngleX = math.rad(math.random(0, 360))
+            local randomAngleY = math.rad(math.random(0, 360))
+            local randomAngleZ = math.rad(math.random(0, 360))
+            
+            rootPart.CFrame = targetRoot.CFrame * CFrame.new(offsetX, offsetY, offsetZ) * CFrame.Angles(randomAngleX, randomAngleY, randomAngleZ)
+         end
+      end)
+
+      task.wait(3.0)
+      if connection then connection:Disconnect() end
+
+      rootPart.CFrame = originalCFrame - Vector3.new(0, 30, 0)
+      rootPart.Anchored = true
+
+      task.wait(3.0)
+
+      if couchTool and couchTool.Parent == character then
+         couchTool.Parent = backpack
+      end
+
+      rootPart.Anchored = false
+      rootPart.CFrame = originalCFrame
+
+      Rayfield:Notify({ Title = "Trolagem Concluída 🇧🇷 | Trolling Completed 🇺🇸", Content = "Ação 'sofá morte' finalizada! 🇧🇷 | Action finished! 🇺🇸", Duration = 3, Image = 4483362458 })
+   end,
+})
+
+TrollTab:CreateButton({
+   Name = "sofá da morte todos 🇧🇷 | couch death all 🇺🇸",
+   Callback = function()
+      local player = game.Players.LocalPlayer
+      local character = player.Character
+      if not character or not character:FindFirstChild("HumanoidRootPart") then
+         Rayfield:Notify({ Title = "Erro 🇧🇷 | Error 🇺🇸", Content = "Seu personagem não foi encontrado! 🇧🇷 | Your character was not found! 🇺🇸", Duration = 3, Image = 4483362458 })
+         return
+      end
+
+      local allPlayers = {}
+      for _, p in ipairs(game.Players:GetPlayers()) do
+         if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            table.insert(allPlayers, p)
+         end
+      end
+
+      if #allPlayers == 0 then
+         Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Não há outros jogadores válidos no mapa! 🇧🇷 | No other valid players on map! 🇺🇸", Duration = 3, Image = 4483362458 })
+         return
+      end
+
+      for i = #allPlayers, 2, -1 do
+         local j = math.random(i)
+         allPlayers[i], allPlayers[j] = allPlayers[j], allPlayers[i]
+      end
+
+      local selectedTargets = {}
+      for i = 1, math.min(3, #allPlayers) do
+         table.insert(selectedTargets, allPlayers[i])
+      end
+
+      local originalCFrame = character.HumanoidRootPart.CFrame
+
+      local backpack = player:FindFirstChild("Backpack")
+      local couchTool = nil
+      if backpack then couchTool = backpack:FindFirstChild("Couch") end
+      if not couchTool then couchTool = character:FindFirstChild("Couch") end
+
+      if couchTool and couchTool:IsA("Tool") then
+         couchTool.Parent = character
+      else
+         Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Item 'Couch' não encontrado na Backpack! 🇧🇷 | Item 'Couch' not found in Backpack! 🇺🇸", Duration = 3, Image = 4483362458 })
+      end
+
+      task.wait(0.1)
+
+      local rootPart = character.HumanoidRootPart
+      local runService = game:GetService("RunService")
+      local startTime = tick()
+      local durationPerTarget = 0.8 
+      local totalTimeNeeded = #selectedTargets * durationPerTarget
+
+      local connection
+      local currentTargetIdx = 1
+      local targetTimer = tick()
+
+      connection = runService.RenderStepped:Connect(function()
+         if tick() - startTime >= totalTimeNeeded then
+            if connection then connection:Disconnect() end
+            return
+         end
+
+         if tick() - targetTimer >= durationPerTarget then
+            targetTimer = tick()
+            currentTargetIdx = currentTargetIdx + 1
+            if currentTargetIdx > #selectedTargets then
+               currentTargetIdx = 1
+            end
+         end
+
+         local currentTarget = selectedTargets[currentTargetIdx]
+         if currentTarget and currentTarget.Character and currentTarget.Character:FindFirstChild("HumanoidRootPart") then
+            local targetRoot = currentTarget.Character.HumanoidRootPart
+            local offsetX = (math.random() - 0.5) * 8
+            local offsetY = (math.random() - 0.5) * 6
+            local offsetZ = (math.random() - 0.5) * 8
+            
+            local randomAngleX = math.rad(math.random(0, 360))
+            local randomAngleY = math.rad(math.random(0, 360))
+            local randomAngleZ = math.rad(math.random(0, 360))
+            
+            rootPart.CFrame = targetRoot.CFrame * CFrame.new(offsetX, offsetY, offsetZ) * CFrame.Angles(randomAngleX, randomAngleY, randomAngleZ)
+         end
+      end)
+
+      task.wait(totalTimeNeeded)
+      if connection then connection:Disconnect() end
+
+      rootPart.CFrame = originalCFrame - Vector3.new(0, 30, 0)
+      rootPart.Anchored = true
+
+      task.wait(3.0)
+
+      if couchTool and couchTool.Parent == character then
+         couchTool.Parent = backpack
+      end
+
+      rootPart.Anchored = false
+      rootPart.CFrame = originalCFrame
+
+      Rayfield:Notify({ Title = "Trolagem Concluída 🇧🇷 | Trolling Completed 🇺🇸", Content = "Ação finalizada! 🇧🇷 | Action finished! 🇺🇸", Duration = 3, Image = 4483362458 })
+   end,
+})
+
+local function findCouchInWorld()
+   local services = {
+      game:GetService("Workspace"),
+      game:GetService("ReplicatedStorage"),
+      game:GetService("Lighting"),
+      game:GetService("ServerStorage")
+   }
+
+   for _, service in ipairs(services) do
+      local found = service:FindFirstChild("003_CouchGiveTool", true)
+      if found then
+         return found
+      end
+   end
+   return nil
+end
+
+TrollTab:CreateButton({
+   Name = "PEGAR SOFÁ 🇧🇷 | GET COUCH 🇺🇸",
+   Callback = function()
+      local player = game.Players.LocalPlayer
+      local character = player.Character or player.CharacterAdded:Wait()
+      local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+      
+      if not humanoidRootPart then return end
+
+      local couchObject = findCouchInWorld()
+      if couchObject then
+         local targetCFrame = nil
+         local seat1 = couchObject:FindFirstChild("Seat1")
+         local mainPart = couchObject:FindFirstChild("Main") or couchObject:FindFirstChildWhichIsA("BasePart")
+         
+         if seat1 and seat1:IsA("BasePart") then
+            targetCFrame = seat1.CFrame + Vector3.new(0, 3, 0)
+         elseif mainPart and mainPart:IsA("BasePart") then
+            targetCFrame = mainPart.CFrame + Vector3.new(0, 3, 0)
+         elseif couchObject:IsA("Model") and couchObject.PrimaryPart then
+            targetCFrame = couchObject.PrimaryPart.CFrame + Vector3.new(0, 3, 0)
+         end
+         
+         if targetCFrame then
+            humanoidRootPart.CFrame = targetCFrame
+            Rayfield:Notify({ Title = "Sucesso! 🇧🇷 | Success! 🇺🇸", Content = "Você foi teletransportado para o sofá! 🇧🇷 | Teleported to the couch! 🇺🇸", Duration = 3.5, Image = 4483362458 })
+         else
+            Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Objeto achado, mas sem partes válidas. 🇧🇷 | Object found, but no valid parts. 🇺🇸", Duration = 4, Image = 4483362458 })
+         end
+      else
+         Rayfield:Notify({ Title = "Não Encontrado 🇧🇷 | Not Found 🇺🇸", Content = "O objeto '003_CouchGiveTool' não foi encontrado. 🇧🇷 | Object not found. 🇺🇸", Duration = 4, Image = 4483362458 })
+      end
+   end,
+})
+
+----------------------------------------------------
+-- SEÇÃO: FUNÇÃO CLIQUE DA MORTE 🇧🇷 | DEATH CLICK FUNCTION 🇺🇸
+----------------------------------------------------
+local DeathClickSection = TrollTab:CreateSection("FUNÇÃO CLIQUE DA MORTE 🇧🇷 | DEATH CLICK FUNCTION 🇺🇸")
+
+local selectedDeathPlayerName = nil
+
+local DeathPlayerDropdown = TrollTab:CreateDropdown({
+   Name = "Selecionar Player (Clique da Morte) 🇧🇷 | Select Player (Death Click) 🇺🇸",
+   Options = getPlayerList(),
+   CurrentOption = "",
+   Flag = "SelectedDeathPlayerDropdown",
+   Callback = function(Option)
+      if type(Option) == "table" then
+         selectedDeathPlayerName = Option[1]
+      else
+         selectedDeathPlayerName = Option
+      end
+   end,
+})
+
+TrollTab:CreateButton({
+   Name = "Atualizar Lista (Clique da Morte) 🇧🇷 | Refresh List (Death Click) 🇺🇸",
+   Callback = function()
+      DeathPlayerDropdown:Refresh(getPlayerList())
+      Rayfield:Notify({ Title = "Atualizado 🇧🇷 | Updated 🇺🇸", Content = "Lista atualizada! 🇧🇷 | List updated! 🇺🇸", Duration = 2, Image = 4483362458 })
+   end,
+})
+
+local deathClickActive = false
+local selectedDeathObject = nil
+local clickConnection = nil
+
+TrollTab:CreateButton({
+   Name = "SELECIONAR OBJETO (Clique no Mapa) 🇧🇷 | SELECT OBJECT (Click on Map) 🇺🇸",
+   Callback = function()
+      local player = game.Players.LocalPlayer
+      local mouse = player:GetMouse()
+
+      Rayfield:Notify({ Title = "Modo de Seleção 🇧🇷 | Selection Mode 🇺🇸", Content = "Clique em qualquer objeto no mapa agora! 🇧🇷 | Click any object on map now! 🇺🇸", Duration = 4, Image = 4483362458 })
+
+      local tempConn
+      tempConn = mouse.Button1Down:Connect(function()
+         if mouse.Target then
+            selectedDeathObject = mouse.Target
+            Rayfield:Notify({ Title = "Objeto Selecionado! 🇧🇷 | Object Selected! 🇺🇸", Content = "Alvo: " .. selectedDeathObject.Name, Duration = 3, Image = 4483362458 })
+            tempConn:Disconnect()
+         end
+      end)
+   end,
+})
+
+TrollTab:CreateToggle({
+   Name = "ATIVAR / DESATIVAR CLIQUE DA MORTE 🇧🇷 | ENABLE / DISABLE DEATH CLICK 🇺🇸",
+   CurrentValue = false,
+   Flag = "DeathClickToggle",
+   Callback = function(Value)
+      deathClickActive = Value
+
+      if deathClickActive then
+         if not selectedDeathObject or not selectedDeathObject.Parent then
+            Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Selecione um objeto primeiro! 🇧🇷 | Select an object first! 🇺🇸", Duration = 3, Image = 4483362458 })
+            return
+         end
+
+         if not selectedDeathPlayerName or selectedDeathPlayerName == "Nenhum player 🇧🇷 | No player 🇺🇸" then
+            Rayfield:Notify({ Title = "Aviso 🇧🇷 | Warning 🇺🇸", Content = "Selecione um player primeiro! 🇺🇸", Duration = 3, Image = 4483362458 })
+            return
+         end
+
+         Rayfield:Notify({ Title = "Ativado 🇧🇷 | Enabled 🇺🇸", Content = "Objeto sendo teletransportado e girando no player! 🇧🇷 | Object teleporting on player! 🇺🇸", Duration = 2, Image = 4483362458 })
+
+         local runService = game:GetService("RunService")
+         local startTime = tick()
+
+         selectedDeathObject.Anchored = false
+         selectedDeathObject.CanCollide = false
+
+         clickConnection = runService.RenderStepped:Connect(function()
+            if not deathClickActive or not selectedDeathObject or not selectedDeathObject.Parent then
+               if clickConnection then clickConnection:Disconnect() end
+               return
+            end
+
+            local targetPlayer = game.Players:FindFirstChild(selectedDeathPlayerName)
+            if targetPlayer and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+               local targetRoot = targetPlayer.Character.HumanoidRootPart
+               local centerPos = targetRoot.Position + Vector3.new(0, 2, 0)
+               local t = (tick() - startTime) * 30
+
+               local angle = t + math.random(1, 5)
+               local radius = 2.5 + math.sin(t) * 1.5
+               local offsetX = math.cos(angle) * radius
+               local offsetZ = math.sin(angle) * radius
+               local offsetY = math.sin(t * 2) * 1.5
+
+               local randomJitter = Vector3.new(math.random(-1, 1), math.random(-1, 1), math.random(-1, 1)) * 0.8
+               local targetCFrame = CFrame.new(centerPos + Vector3.new(offsetX, offsetY, offsetZ) + randomJitter) * CFrame.Angles(math.random(0, 360), math.random(0, 360), math.random(0, 360))
+
+               selectedDeathObject.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+               selectedDeathObject.AssemblyAngularVelocity = Vector3.new(math.random(-300, 300), math.random(-300, 300), math.random(-300, 300))
+               selectedDeathObject.CFrame = targetCFrame
+            end
+         end)
+      else
+         if clickConnection then clickConnection:Disconnect() end
+         if selectedDeathObject and selectedDeathObject.Parent then
+            selectedDeathObject.CanCollide = true
+         end
+         Rayfield:Notify({ Title = "Desativado 🇧🇷 | Disabled 🇺🇸", Content = "Desligado. 🇧🇷 | Turned off. 🇺🇸", Duration = 2, Image = 4483362458 })
+      end
+   end,
+})
+
+----------------------------------------------------
+-- SEÇÃO: FUNÇÃO DE VEÍCULO 🇧🇷 | VEHICLE FUNCTION 🇺🇸
+----------------------------------------------------
+local VehicleSection = TrollTab:CreateSection("FUNÇÃO DE VEÍCULO 🇧🇷 | VEHICLE FUNCTION 🇺🇸")
+
+local selectedVehiclePlayerName = nil
+
+local VehiclePlayerDropdown = TrollTab:CreateDropdown({
+   Name = "Player para Jogar Veículos 🇧🇷 | Player to Throw Vehicles At 🇺🇸",
+   Options = getPlayerList(),
+   CurrentOption = "",
+   Flag = "SelectedVehiclePlayerDropdown",
+   Callback = function(Option)
+      if type(Option) == "table" then
+         selectedVehiclePlayerName = Option[1]
+      else
+         selectedVehiclePlayerName = Option
+      end
+   end,
+})
+
+TrollTab:CreateButton({
+   Name = "Atualizar Lista (Veículos) 🇧🇷 | Refresh List (Vehicles) 🇺🇸",
+   Callback = function()
+      VehiclePlayerDropdown:Refresh(getPlayerList())
+      Rayfield:Notify({ Title = "Atualizado 🇧🇷 | Updated 🇺🇸", Content = "Lista atualizada! 🇧🇷 | List updated! 🇺🇸", Duration = 2, Image = 4483362458 })
+   end,
+})
+
+local vehicleLoopActive = false
+
+TrollTab:CreateToggle({
+   Name = "JOGAR VEÍCULOS NO JOGADOR (Loop Automático) 🇧🇷 | THROW VEHICLES AT PLAYER (Auto Loop) 🇺🇸",
+   CurrentValue = false,
+   Flag = "VehicleLoopToggle",
+   Callback = function(Value)
+      vehicleLoopActive = Value
+
+      if vehicleLoopActive then
+         Rayfield:Notify({ Title = "Ativado 🇧🇷 | Enabled 🇺🇸", Content = "Loop de veículos iniciado! 🇧🇷 | Vehicle loop started! 🇺🇸", Duration = 2, Image = 4483362458 })
+
+         task.spawn(function()
+            while vehicleLoopActive do
+               local player = game.Players.LocalPlayer
+               local character = player.Character
+               
+               if not character or not character:FindFirstChild("HumanoidRootPart") then
+                  task.wait(1)
+                  continue
+               end
+
+               if not selectedVehiclePlayerName or selectedVehiclePlayerName == "Nenhum player 🇧🇷 | No player 🇺🇸" then
+                  task.wait(1)
+                  continue
+               end
+
+               local targetPlayer = game.Players:FindFirstChild(selectedVehiclePlayerName)
+               if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                  task.wait(1)
+                  continue
+               end
+
+               local services = {
+                  game:GetService("Workspace"),
+                  game:GetService("ReplicatedStorage"),
+                  game:GetService("Lighting"),
+                  game:GetService("ServerStorage")
+               }
+
+               local vehiclesFolder = nil
+               for _, service in ipairs(services) do
+                  local found = service:FindFirstChild("Vehicles", true)
+                  if found then
+                     vehiclesFolder = found
+                     break
+                  end
+               end
+
+               if not vehiclesFolder then
+                  task.wait(2)
+                  continue
+               end
+
+               local availableVehicles = {}
+               for _, item in ipairs(vehiclesFolder:GetChildren()) do
+                  if item:IsA("Model") then
+                     table.insert(availableVehicles, item)
+                  end
+               end
+
+               if #availableVehicles == 0 then
+                  task.wait(2)
+                  continue
+               end
+
+               local originalCFrame = character.HumanoidRootPart.CFrame
+               local rootPart = character.HumanoidRootPart
+               local humanoid = character:FindFirstChildOfClass("Humanoid")
+               local runService = game:GetService("RunService")
+
+               local randomVehicleTemplate = availableVehicles[math.random(1, #availableVehicles)]
+               local vehicleClone = randomVehicleTemplate:Clone()
+               vehicleClone.Parent = workspace
+
+               local centerCFrame, size = vehicleClone:GetBoundingBox()
+               local distanceZ = math.max(size.Z * 0.8, 10)
+
+               local gestureStartTime = tick()
+               local activeGesture = true
+               
+               local conn
+               conn = runService.RenderStepped:Connect(function()
+                  local t = tick() - gestureStartTime
+                  if t >= 3.0 or not activeGesture or not vehicleLoopActive then
+                     if conn then conn:Disconnect() end
+                     return
+                  end
+
+                  local offsetZ = math.sin(t * 12) * distanceZ
+                  local offsetY = 2 + (math.cos(t * 16) * 2.5)
+                  
+                  rootPart.CFrame = centerCFrame * CFrame.new(0, offsetY, offsetZ)
+               end)
+
+               task.wait(3.0)
+               activeGesture = false
+               if conn then conn:Disconnect() end
+
+               if not vehicleLoopActive then break end
+
+               if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                  local targetRoot = targetPlayer.Character.HumanoidRootPart
+                  rootPart.CFrame = targetRoot.CFrame + Vector3.new(0, 6, 0)
+               end
+
+               if humanoid then
+                  humanoid.Sit = false
+                  humanoid.Jump = true
+               end
+               task.wait(0.35)
+
+               rootPart.CFrame = originalCFrame
+               task.wait(0.4)
+            end
+         end)
+      else
+         Rayfield:Notify({ Title = "Desativado 🇧🇷 | Disabled 🇺🇸", Content = "Encerrado. 🇧🇷 | Ended. 🇺🇸", Duration = 2, Image = 4483362458 })
+      end
+   end,
+})
+
+local mountAndThrowActive = false
+
+TrollTab:CreateToggle({
+   Name = "MONTE EM UM VEÍCULO E JOGUE NO JOGADOR 🇧🇷 | MOUNT VEHICLE AND THROW AT PLAYER 🇺🇸",
+   CurrentValue = false,
+   Flag = "MountAndThrowToggle",
+   Callback = function(Value)
+      mountAndThrowActive = Value
+
+      if mountAndThrowActive then
+         Rayfield:Notify({ Title = "Ativado 🇧🇷 | Enabled 🇺🇸", Content = "Iniciado! 🇧🇷 | Started! 🇺🇸", Duration = 2, Image = 4483362458 })
+
+         task.spawn(function()
+            while mountAndThrowActive do
+               local player = game.Players.LocalPlayer
+               local character = player.Character
+               
+               if not character or not character:FindFirstChild("HumanoidRootPart") then
+                  task.wait(1)
+                  continue
+               end
+
+               if not selectedVehiclePlayerName or selectedVehiclePlayerName == "Nenhum player 🇧🇷 | No player 🇺🇸" then
+                  task.wait(1)
+                  continue
+               end
+
+               local targetPlayer = game.Players:FindFirstChild(selectedVehiclePlayerName)
+               if not targetPlayer or not targetPlayer.Character or not targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                  task.wait(1)
+                  continue
+               end
+
+               local runService = game:GetService("RunService")
+               local rootPart = character.HumanoidRootPart
+
+               local gestureStartTime = tick()
+               local gestureActive = true
+
+               local conn
+               conn = runService.RenderStepped:Connect(function()
+                  local t = tick() - gestureStartTime
+                  if not gestureActive or not mountAndThrowActive then
+                     if conn then conn:Disconnect() end
+                     return
+                  end
+
+                  if targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") then
+                     local targetRoot = targetPlayer.Character.HumanoidRootPart
+                     
+                     local offsetZ = math.sin(t * 30) * 16
+                     local offsetY = 3 + (math.cos(t * 35) * 8)
+                     local offsetX = math.sin(t * 22) * 10
+
+                     rootPart.CFrame = targetRoot.CFrame * CFrame.new(offsetX, offsetY, offsetZ)
+                  end
+               end)
+
+               while mountAndThrowActive and targetPlayer.Character and targetPlayer.Character:FindFirstChild("HumanoidRootPart") do
+                  task.wait(0.2)
+               end
+
+               gestureActive = false
+               if conn then conn:Disconnect() end
+            end
+         end)
+      else
+         Rayfield:Notify({ Title = "Desativado 🇧🇷 | Disabled 🇺🇸", Content = "Desativado. 🇧🇷 | Disabled. 🇺🇸", Duration = 2, Image = 4483362458 })
+      end
+   end,
+})
+
+local vehicleSpinActive = false
+
+TrollTab:CreateToggle({
+   Name = "GIRO COM VEÍCULO 🇧🇷 | VEHICLE SPIN 🇺🇸",
+   CurrentValue = false,
+   Flag = "VehicleSpinToggle",
+   Callback = function(Value)
+      vehicleSpinActive = Value
+
+      if vehicleSpinActive then
+         Rayfield:Notify({ Title = "Ativado 🇧🇷 | Enabled 🇺🇸", Content = "Giro iniciado! 🇧🇷 | Spin started! 🇺🇸", Duration = 2, Image = 4483362458 })
+
+         task.spawn(function()
+            local player = game.Players.LocalPlayer
+            local runService = game:GetService("RunService")
+
+            while vehicleSpinActive do
+               local character = player.Character
+               if not character or not character:FindFirstChild("HumanoidRootPart") then
+                  task.wait(1)
+                  continue
+               end
+
+               local rootPart = character.HumanoidRootPart
+               local humanoid = character:FindFirstChildOfClass("Humanoid")
+               
+               local originCFrame = rootPart.CFrame
+               local originPos = originCFrame.Position
+               local fixedY = originPos.Y
+
+               local services = {
+                  game:GetService("Workspace"),
+                  game:GetService("ReplicatedStorage"),
+                  game:GetService("Lighting"),
+                  game:GetService("ServerStorage")
+               }
+
+               local vehiclesFolder = nil
+               for _, service in ipairs(services) do
+                  local found = service:FindFirstChild("Vehicles", true)
+                  if found then
+                     vehiclesFolder = found
+                     break
+                  end
+               end
+
+               local vehicleClone = nil
+               if vehiclesFolder then
+                  local available = {}
+                  for _, item in ipairs(vehiclesFolder:GetChildren()) do
+                     if item:IsA("Model") then table.insert(available, item) end
+                  end
+                  if #available > 0 then
+                     vehicleClone = available[math.random(1, #available)]:Clone()
+                     vehicleClone.Parent = workspace
+                  end
+               end
+
+               local cycleStartTime = tick()
+               local isSpinning = true
+
+               local conn
+               conn = runService.RenderStepped:Connect(function()
+                  if not vehicleSpinActive or not isSpinning or not character:FindFirstChild("HumanoidRootPart") then
+                     if conn then conn:Disconnect() end
+                     return
+                  end
+
+                  local elapsed = tick() - cycleStartTime
+                  local duration = 6.0
+                  local progress = (elapsed % duration) / duration
+
+                  local radiusProgress = math.sin(progress * math.pi) 
+                  local currentRadius = radiusProgress * 300 
+
+                  local speedMultiplier = 6 + (radiusProgress * 35)
+                  local angle = elapsed * speedMultiplier
+
+                  local offsetX = math.cos(angle) * currentRadius
+                  local offsetZ = math.sin(angle) * currentRadius
+
+                  local newPosition = Vector3.new(originPos.X + offsetX, fixedY, originPos.Z + offsetZ)
+
+                  local targetCFrame
+                  if (newPosition - originPos).Magnitude > 0.1 then
+                     targetCFrame = CFrame.lookAt(newPosition, originPos)
+                  else
+                     targetCFrame = originCFrame
+                  end
+
+                  rootPart.CFrame = targetCFrame
+
+                  if vehicleClone and vehicleClone.PrimaryPart then
+                     vehicleClone:SetPrimaryPartCFrame(targetCFrame)
+                  end
+               end)
+
+               while vehicleSpinActive and character:FindFirstChild("HumanoidRootPart") do
+                  task.wait(0.1)
+               end
+
+               isSpinning = false
+               if conn then conn:Disconnect() end
+
+               if vehicleClone then
+                  vehicleClone:Destroy()
+               end
+
+               if humanoid then
+                  humanoid.Sit = false
+                  humanoid.Jump = true
+               end
+
+               rootPart.CFrame = originCFrame
+               task.wait(0.2)
+            end
+         end)
+      else
+         Rayfield:Notify({ Title = "Desativado 🇧🇷 | Disabled 🇺🇸", Content = "Finalizado. 🇧🇷 | Finished. 🇺🇸", Duration = 2, Image = 4483362458 })
+      end
+   end,
+})
+
+----------------------------------------------------
+-- ABA: MAPA 🇧🇷 | MAP 🇺🇸
+----------------------------------------------------
+local MapTab = Window:CreateTab("MAPA 🇧🇷 | MAP 🇺🇸", 4483362458)
+local MapSection = MapTab:CreateSection("Manipulação de Texturas do Mapa 🇧🇷 | Map Texture Manipulation 🇺🇸")
+
+local glitchActive = false
+
+MapTab:CreateToggle({
+   Name = "GLITCH (Texturas do Mapa) 🇧🇷 | GLITCH (Map Textures) 🇺🇸",
+   CurrentValue = false,
+   Flag = "MapGlitchToggle",
+   Callback = function(Value)
+      glitchActive = Value
+
+      if glitchActive then
+         Rayfield:Notify({ Title = "Glitch Ativado 🇧🇷 | Glitch Enabled 🇺🇸", Content = "Distorcendo texturas do mapa... 🇧🇷 | Distorting map textures... 🇺🇸", Duration = 3, Image = 4483362458 })
+
+         task.spawn(function()
+            while glitchActive do
+               for _, obj in ipairs(workspace:GetDescendants()) do
+                  if not glitchActive then break end
+                  if obj:IsA("Texture") or obj:IsA("Decal") then
+                     obj.Transparency = math.random(0, 8) / 10
+                     if math.random(1, 3) == 1 then
+                        obj.Color3 = Color3.fromRGB(math.random(0, 255), math.random(0, 255), math.random(0, 255))
+                     end
+                  elseif obj:IsA("BasePart") and math.random(1, 50) == 1 then
+                     obj.Color = Color3.fromRGB(math.random(0, 255), math.random(0, 255), math.random(0, 255))
+                  end
+               end
+               task.wait(0.2)
+            end
+         end)
+      else
+         Rayfield:Notify({ Title = "Glitch Desativado 🇧🇷 | Glitch Disabled 🇺🇸", Content = "Finalizado. 🇧🇷 | Finished. 🇺🇸", Duration = 2, Image = 4483362458 })
+      end
+   end,
+})
+
+-- Notificação de inicialização confirmando o carregamento
+Rayfield:Notify({
+   Title = "Script Carregado! 🇧🇷 | Script Loaded! 🇺🇸",
+   Content = "@MUULKMENU - BROOKHAVEN carregado com sucesso! 🇧🇷 | Successfully loaded! 🇺🇸",
+   Duration = 3,
+   Image = 4483362458,
+})
